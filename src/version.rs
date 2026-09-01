@@ -9,7 +9,7 @@
 //! 2026-09-01 的事故里，这两者会分叉：npm 说装了 1.18.25（package.json 是新的），
 //! 但 postinstall 被拦、二进制没换，跑出来还是 1.17.8。只看任何一边都发现不了。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command as Proc, Stdio};
 use std::time::Duration;
 
@@ -194,4 +194,45 @@ mod tests {
             Some("2.4.1".into())
         );
     }
+}
+
+/// 通过 shim 拿版本是不可靠的 —— 垫片的 `--version` 打的是**管理器自己的版本**。
+///
+/// 2026-09-01 实测：`~/.local/share/mise/shims/bun --version` 返回 `2026.8.16`
+/// （mise 的版本），而真实的 bun 是 1.4.0。这种输出比没有输出更坏：
+/// 它看起来是个正常答案，排查时会把人带偏。
+///
+/// 所以对 shim 要先问管理器「你实际会执行哪个文件」，再对那个文件取版本。
+pub fn resolve_shim_target(shim: &Path) -> Option<PathBuf> {
+    let name = shim.file_name()?.to_str()?;
+    // 逐个试，某个管理器不存在就跳过——这里用 `?` 会让第一个缺失的管理器
+    // 直接终止整个查找，是刚写的时候犯的错
+    for mgr in ["mise", "asdf", "rtx"] {
+        let Some(bin) = which_manager(mgr) else { continue };
+        let Ok(out) = Proc::new(&bin)
+            .arg("which")
+            .arg(name)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+        else {
+            continue;
+        };
+        let p = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !p.is_empty() && Path::new(&p).is_file() {
+            return Some(PathBuf::from(p));
+        }
+    }
+    None
+}
+
+fn which_manager(name: &str) -> Option<PathBuf> {
+    for dir in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
+        let p = Path::new(dir).join(name);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    None
 }

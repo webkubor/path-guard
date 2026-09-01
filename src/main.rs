@@ -85,7 +85,20 @@ fn cmd_which(name: &str) {
         }
     }
     println!();
-    if let Some(real) = &winner.real {
+    // shim 的 --version 打的是管理器自己的版本（实测 shims/bun 返回 mise 的 2026.8.16），
+    // 必须先问管理器要到真身，再对真身取版本 —— 否则给出的是个看似正常的错误答案
+    let probe: Option<std::path::PathBuf> = if scan::is_shim(winner) {
+        match version::resolve_shim_target(&winner.link) {
+            Some(t) => {
+                println!("   shim 转发到 {}", short(&t));
+                Some(t)
+            }
+            None => None,
+        }
+    } else {
+        winner.real.clone()
+    };
+    if let Some(real) = &probe {
         if let Some(v) = version::runtime_version(real) {
             println!("   运行时版本 {v}");
         }
