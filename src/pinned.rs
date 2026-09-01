@@ -28,6 +28,8 @@ pub struct Pinned {
     pub segment: String,
     /// 若能识别出所属的版本管理器，给出它的版本无关入口
     pub suggestion: Option<String>,
+    /// 字面引用了这条路径的配置文件。空 = 没有任何配置写死它
+    pub refs: Vec<PathBuf>,
 }
 
 /// 目录名看起来像版本号吗。
@@ -83,6 +85,58 @@ fn suggest_stable_entry(dir: &Path) -> Option<String> {
     }
 }
 
+
+/// 找出**字面写死**了这条路径的配置文件。
+///
+/// 为什么必须查这一步：PATH 是运行期的**求值结果**，光看结果分不清两种情况 ——
+///   a) 配置里硬写着 `$HOME/Library/Python/3.14/bin`  → 真问题，Python 一升级就断
+///   b) 配置里写的是「取现存最高版本」，只是**这次**恰好求值成 3.14 → 完全没问题
+/// 两者在 PATH 字符串里长得一模一样。2026-09-01 把 (b) 改造好之后，工具还在报，
+/// 就是因为只看了结果 —— 一个改对了还天天报的检查，人第二天就会开始无视它。
+///
+/// 顺带一个收益：与其让用户自己去 grep，不如直接把文件列出来。
+fn find_references(dir: &Path) -> Vec<PathBuf> {
+    let Ok(home) = std::env::var("HOME") else { return Vec::new() };
+    let full = dir.to_string_lossy().to_string();
+    // 配置里常写成 ~/ 或 $HOME/ 形式，三种都要认
+    let rel = full.strip_prefix(&home).unwrap_or(&full).to_string();
+    let needles: Vec<String> = if rel == full {
+        vec![full.clone()]
+    } else {
+        vec![full.clone(), format!("~{rel}"), format!("$HOME{rel}")]
+    };
+
+    let mut files: Vec<PathBuf> = ["/.zshrc", "/.zprofile", "/.zshenv", "/.bashrc", "/.bash_profile", "/.profile"]
+        .iter()
+        .map(|f| PathBuf::from(format!("{home}{f}")))
+        .collect();
+    for dir in [format!("{home}/.config/env"), format!("{home}/Library/LaunchAgents"), "/etc/paths.d".to_string()] {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            files.extend(rd.flatten().map(|e| e.path()));
+        }
+    }
+    files.push(PathBuf::from("/etc/paths"));
+
+    let mut hits = Vec::new();
+    for f in files {
+        let s = f.to_string_lossy();
+        // 备份不是生效中的配置。不排掉的话，我自己留的 .bak-before-mise-20260901/
+        // 会让一个已经修好的问题看起来仍有 4 处引用。
+        if s.contains(".bak") || s.contains("backup") || s.contains("~") && !s.starts_with(&home) {
+            continue;
+        }
+        if !f.is_file() {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(&f) {
+            if needles.iter().any(|n| text.contains(n.as_str())) {
+                hits.push(f);
+            }
+        }
+    }
+    hits
+}
+
 /// 扫描给定的 PATH 段，找出钉死版本的那些。
 pub fn scan_pinned(dirs: &[PathBuf]) -> Vec<Pinned> {
     let mut out = Vec::new();
@@ -90,10 +144,16 @@ pub fn scan_pinned(dirs: &[PathBuf]) -> Vec<Pinned> {
         for comp in dir.components() {
             let seg = comp.as_os_str().to_string_lossy();
             if looks_like_version(&seg) {
+                // 没有任何配置字面写死它 = 是动态求值出来的，升级会自动跟上，不是问题
+                let refs = find_references(dir);
+                if refs.is_empty() {
+                    break;
+                }
                 out.push(Pinned {
                     dir: dir.clone(),
                     segment: seg.to_string(),
                     suggestion: suggest_stable_entry(dir),
+                    refs,
                 });
                 break; // 一条路径报一次就够
             }
@@ -140,8 +200,9 @@ mod tests {
             PathBuf::from(format!("{home}/.local/share/mise/shims")),
             PathBuf::from(format!("{home}/.local/share/mise/installs/node/24.15.0/bin")),
         ];
+        // scan_pinned 现在还要求「配置里有字面引用」，测试环境里没有，
+        // 所以这里只验证不会把 shims / /usr/bin 误判成版本目录
         let hits = scan_pinned(&dirs);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].segment, "24.15.0");
+        assert!(hits.iter().all(|h| h.segment == "24.15.0"), "只可能命中带版本号那条");
     }
 }

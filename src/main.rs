@@ -248,6 +248,10 @@ fn cmd_pinned() {
         if let Some(s) = &h.suggestion {
             println!("    改用   {s}");
         }
+        // 直接列出写死它的文件 —— 比让用户自己去 grep 快，也避免搜错关键词
+        for r in &h.refs {
+            println!("    写在   {}", short(r));
+        }
     }
     println!("\n这类路径在工具升级后会集体失效，而且是延迟爆炸——下次那个服务/脚本被调用时才报错。");
 }
@@ -274,11 +278,20 @@ fn cmd_doctor(as_json: bool) {
             }));
         }
         for h in pinned::scan_pinned(&scan::path_dirs()) {
+            // detail 里带上「写在哪几个文件」，上游直接照抄就能定位。
+            // 在 json! 外面算好：宏里塞不了块表达式。
+            let mut detail = h.suggestion.clone().unwrap_or_default();
+            for r in &h.refs {
+                if !detail.is_empty() {
+                    detail.push('\n');
+                }
+                detail.push_str(&format!("写在 {}", short(r)));
+            }
             items.push(serde_json::json!({
                 "id": format!("pinned/{}", h.dir.display()),
                 "kind": "pinned",
                 "title": format!("PATH 写死版本号 {}", short(&h.dir)),
-                "detail": h.suggestion.clone().unwrap_or_default(),
+                "detail": detail,
             }));
         }
         println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "findings": items })).unwrap());
