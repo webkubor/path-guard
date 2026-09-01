@@ -215,6 +215,19 @@ pub fn scan_one(name: &str) -> Option<Command> {
     })
 }
 
+
+/// 系统自带、动不了也不该动的路径 —— 报了也没法处理，属于永久噪音。
+///
+/// `/usr/sbin/weakpass_edit` 是 macOS 自带的悬空软链（指向相对路径
+/// `authserver/tools/weakpass`），SIP 保护删不掉、也不影响任何东西。
+/// 一个每次都报、每次都只能忽略的条目，会稀释真正需要处理的那些。
+pub fn is_system_owned(p: &Path) -> bool {
+    const SIP_DIRS: [&str; 4] = ["/usr/sbin/", "/usr/bin/", "/System/", "/bin/"];
+    let s = p.to_string_lossy();
+    // /usr/local/bin 不算——那是用户可写的，homebrew 之外的东西也往那放
+    SIP_DIRS.iter().any(|d| s.starts_with(d))
+}
+
 /// 这个副本是不是某个版本管理器的 shim（垫片）。
 ///
 /// shim 的特征：它的 realpath 指向**管理器本体**（mise / asdf / pyenv…），

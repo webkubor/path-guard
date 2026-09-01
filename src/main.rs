@@ -44,7 +44,11 @@ enum Sub {
     /// 找出 PATH 里写死版本号的路径段（升级后会集体失效）
     Pinned,
     /// 一次性体检：多副本 + 悬空 + 钉死版本
-    Doctor,
+    Doctor {
+        /// 输出 JSON，供 cs diag runtime 等上游消费
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() {
@@ -54,7 +58,7 @@ fn main() {
         Sub::Dupes { versions } => cmd_dupes(versions),
         Sub::Dangling => cmd_dangling(),
         Sub::Pinned => cmd_pinned(),
-        Sub::Doctor => cmd_doctor(),
+        Sub::Doctor { json } => cmd_doctor(json),
     }
 }
 
@@ -214,7 +218,7 @@ fn cmd_dangling() {
     let mut found = 0;
     for cmd in all.values() {
         for e in &cmd.entries {
-            if e.is_dangling() {
+            if e.is_dangling() && !scan::is_system_owned(&e.link) {
                 found += 1;
                 println!("❌ {}", short(&e.link));
                 if let Ok(t) = std::fs::read_link(&e.link) {
@@ -248,14 +252,38 @@ fn cmd_pinned() {
     println!("\n这类路径在工具升级后会集体失效，而且是延迟爆炸——下次那个服务/脚本被调用时才报错。");
 }
 
-fn cmd_doctor() {
+fn cmd_doctor(as_json: bool) {
     let all = scan();
     let dupes: Vec<&Cmd> = all.values().filter(|c| c.has_distinct_copies()).collect();
     let dangling: Vec<(&Cmd, &scan::Entry)> = all
         .values()
         .flat_map(|c| c.entries.iter().map(move |e| (c, e)))
-        .filter(|(_, e)| e.is_dangling())
+        .filter(|(_, e)| e.is_dangling() && !scan::is_system_owned(&e.link))
         .collect();
+
+    if as_json {
+        // 只输出「需要处理的」——上游（cs diag runtime）按 id 做「只推变化」的去重，
+        // 所以 id 必须稳定：同一个问题每次跑出来要是同一个字符串。
+        let mut items: Vec<serde_json::Value> = Vec::new();
+        for (_, e) in &dangling {
+            items.push(serde_json::json!({
+                "id": format!("dangling/{}", e.link.display()),
+                "kind": "dangling",
+                "title": format!("悬空软链 {}", short(&e.link)),
+                "detail": std::fs::read_link(&e.link).map(|t| format!("→ {}", short(&t))).unwrap_or_default(),
+            }));
+        }
+        for h in pinned::scan_pinned(&scan::path_dirs()) {
+            items.push(serde_json::json!({
+                "id": format!("pinned/{}", h.dir.display()),
+                "kind": "pinned",
+                "title": format!("PATH 写死版本号 {}", short(&h.dir)),
+                "detail": h.suggestion.clone().unwrap_or_default(),
+            }));
+        }
+        println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "findings": items })).unwrap());
+        return;
+    }
 
     println!("path-guard 体检");
     println!("  PATH 段数      {}", scan::path_dirs().len());
