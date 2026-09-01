@@ -69,9 +69,11 @@ impl Command {
     /// 只看路径个数会误报：同一个文件被多处软链引用是正常的（homebrew 的 bin 布局就这样）。
     /// 必须按 realpath 去重，剩下 >1 才是真的装了多份。
     pub fn has_distinct_copies(&self) -> bool {
+        // 排除 shim：它与自己的目标必然 realpath 不同，算进来会让每个命令都误报成多副本
         let mut reals: Vec<&Path> = self
             .entries
             .iter()
+            .filter(|e| !is_shim(e))
             .filter_map(|e| e.real.as_deref())
             .collect();
         reals.sort();
@@ -211,4 +213,97 @@ pub fn scan_one(name: &str) -> Option<Command> {
         name: name.to_string(),
         entries,
     })
+}
+
+/// 这个副本是不是某个版本管理器的 shim（垫片）。
+///
+/// shim 的特征：它的 realpath 指向**管理器本体**（mise / asdf / pyenv…），
+/// 而不是目标程序。比如 `~/.local/share/mise/shims/claude → /opt/homebrew/bin/mise`。
+///
+/// 为什么必须识别它：shims 型管理器会让**每个命令都出现两次** ——
+/// 一次在 shims/（PATH 靠前），一次在 installs/<版本>/bin/（PATH 靠后）。
+/// 两者 realpath 不同（一个是 mise 本体、一个是真程序），按实体去重会全部判成
+/// 「多副本」。2026-09-01 迁到 mise 后本工具就这么误报了：48 → 80 条，
+/// 多出的 32 条全是 shim 与其目标的配对，实际零问题。
+pub fn is_shim(e: &Entry) -> bool {
+    const MANAGERS: [&str; 5] = ["/mise", "/asdf", "/pyenv", "/rbenv", "/volta"];
+    // 路径里带 /shims/ 且解析到管理器本体 —— 两个条件都要，避免把
+    // 名字里恰好有 shims 的普通程序算进来
+    let in_shims_dir = e.link.components().any(|c| c.as_os_str() == "shims");
+    let points_to_manager = e
+        .real
+        .as_ref()
+        .map(|r| {
+            let s = r.to_string_lossy();
+            MANAGERS.iter().any(|m| s.ends_with(m))
+        })
+        .unwrap_or(false);
+    in_shims_dir && points_to_manager
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(link: &str, real: Option<&str>) -> Entry {
+        Entry {
+            name: "x".into(),
+            path_index: 0,
+            link: PathBuf::from(link),
+            real: real.map(PathBuf::from),
+            is_symlink: true,
+        }
+    }
+
+    #[test]
+    fn detects_mise_shim() {
+        let e = entry(
+            "/Users/me/.local/share/mise/shims/claude",
+            Some("/opt/homebrew/bin/mise"),
+        );
+        assert!(is_shim(&e));
+    }
+
+    #[test]
+    fn plain_symlink_is_not_a_shim() {
+        // 普通软链指向真程序，不是 shim
+        let e = entry("/usr/local/bin/node", Some("/opt/homebrew/bin/node"));
+        assert!(!is_shim(&e));
+    }
+
+    #[test]
+    fn shims_dir_alone_is_not_enough() {
+        // 在 shims/ 目录里但指向真程序 —— 两个条件必须同时满足
+        let e = entry("/some/shims/tool", Some("/usr/bin/tool"));
+        assert!(!is_shim(&e));
+    }
+
+    #[test]
+    fn shim_plus_target_is_not_a_duplicate() {
+        // 这正是 2026-09-01 的误报场景：shim + 它的目标，应判为「非多副本」
+        let cmd = Command {
+            name: "claude".into(),
+            entries: vec![
+                entry("/Users/me/.local/share/mise/shims/claude", Some("/opt/homebrew/bin/mise")),
+                entry(
+                    "/Users/me/.local/share/mise/installs/node/24.15.0/bin/claude",
+                    Some("/Users/me/.local/share/mise/installs/node/24.15.0/lib/node_modules/.bin/claude"),
+                ),
+            ],
+        };
+        assert!(!cmd.has_distinct_copies(), "shim 与其目标不该算多副本");
+    }
+
+    #[test]
+    fn two_real_copies_still_flagged() {
+        // 真的装了两份，仍要报
+        let cmd = Command {
+            name: "node".into(),
+            entries: vec![
+                entry("/opt/homebrew/bin/node", Some("/opt/homebrew/Cellar/node/23.9.0/bin/node")),
+                entry("/usr/local/bin/node", Some("/usr/local/n/versions/node/20/bin/node")),
+            ],
+        };
+        assert!(cmd.has_distinct_copies());
+    }
 }
