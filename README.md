@@ -85,9 +85,6 @@ cargo build --release && cp target/release/path-guard ~/.local/bin/
 - 只扫 PATH。应用自己数据目录里的软链（如 `~/.dsh/profiles/node_modules`）目前不覆盖 —— 那次 DSH 的 106 个悬空链就在 PATH 之外
 - 声明版本只认 `package.json`，pipx / brew / cargo 装的包还没接
 
-## License
-
-MIT
 
 ## 安装到全局
 
@@ -126,3 +123,7 @@ PATH 里钉死了版本号的路径：2 条
 
 正确写法是用版本管理器的**版本无关入口**：mise 用 `shims/`、pyenv/rbenv/asdf 同理、
 homebrew 用 `opt/<formula>/bin` 而不是 `Cellar/<version>/`。
+
+## License
+
+MIT
