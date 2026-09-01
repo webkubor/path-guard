@@ -114,8 +114,29 @@ fn cmd_which(name: &str) {
         return;
     }
 
+    // winner 若是 shim，它转发到的那个目标也会出现在 shadowed 里——那是同一个东西的两种
+    // 到达方式，不是「被遮蔽的另一份安装」。不排除的话，每个走 shim 的命令都会假报一条。
+    let shim_target = if scan::is_shim(winner) {
+        version::resolve_shim_target(&winner.link)
+    } else {
+        None
+    };
+    let real_shadowed: Vec<&scan::Entry> = shadowed
+        .iter()
+        .filter(|e| match &shim_target {
+            // 它就是 shim 转发过去的那个（不论按链接路径还是解析后的真身比对）
+            Some(t) => e.link != *t && e.real.as_deref() != Some(t.as_path()),
+            None => true,
+        })
+        .collect();
+
+    if real_shadowed.is_empty() {
+        println!("\n✅ 没有其它副本，不存在遮蔽");
+        return;
+    }
+
     println!("\n被它遮蔽的（存在但永远轮不到）：");
-    for e in shadowed {
+    for e in real_shadowed {
         // 同一实体的多个软链无害，标出来避免误伤
         let same = match (&winner.real, &e.real) {
             (Some(a), Some(b)) => a == b,
