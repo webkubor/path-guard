@@ -3,6 +3,15 @@
 > [English](README.en.md) | 中文
 
 
+<p align="center">
+  <a href="https://github.com/webkubor/path-guard/blob/main/LICENSE"><img src="https://img.shields.io/github/license/webkubor/path-guard?style=for-the-badge&color=gold" alt="License"></a>
+  <a href="https://github.com/webkubor/path-guard"><img src="https://img.shields.io/github/stars/webkubor/path-guard?style=for-the-badge&color=coral" alt="Stars"></a>
+  <a href="https://github.com/webkubor/path-guard"><img src="https://img.shields.io/github/languages/top/webkubor/path-guard?style=for-the-badge&color=333333" alt="语言"></a>
+  <a href="https://github.com/webkubor/path-guard/commits"><img src="https://img.shields.io/github/last-commit/webkubor/path-guard?style=for-the-badge&color=4c9a6b" alt="最近提交"></a>
+  <a href="https://github.com/webkubor/path-guard/forks"><img src="https://img.shields.io/github/forks/webkubor/path-guard?style=for-the-badge&color=8b949e" alt="forks"></a>
+  <a href="https://github.com/webkubor/path-guard"><img src="https://img.shields.io/badge/Rust-333333?style=for-the-badge" alt="Rust"></a>
+</p>
+
 查出你敲的命令**实际跑的是哪一个副本**、被谁遮蔽、以及更新到底生效没有。
 
 ## 它治什么病
