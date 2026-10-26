@@ -203,7 +203,9 @@ fn cmd_dupes(with_versions: bool) {
                         }
                         (Some(v), Some((pkg, pv))) => println!("       {v}（{pkg}@{pv}）"),
                         (Some(v), None) => println!("       {v}"),
-                        (None, Some((pkg, pv))) => println!("       {pkg}@{pv}（取不到运行时版本）"),
+                        (None, Some((pkg, pv))) => {
+                            println!("       {pkg}@{pv}（取不到运行时版本）")
+                        }
                         (None, None) => {}
                     }
                 }
@@ -294,7 +296,10 @@ fn cmd_doctor(as_json: bool) {
                 "detail": detail,
             }));
         }
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "findings": items })).unwrap());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "findings": items })).unwrap()
+        );
         return;
     }
 
@@ -311,7 +316,10 @@ fn cmd_doctor(as_json: bool) {
             println!("       {}", short(&e.link));
         }
         if dangling.len() > 5 {
-            println!("       …… 还有 {} 个，看 `path-guard dangling`", dangling.len() - 5);
+            println!(
+                "       …… 还有 {} 个，看 `path-guard dangling`",
+                dangling.len() - 5
+            );
         }
     }
 
@@ -324,7 +332,10 @@ fn cmd_doctor(as_json: bool) {
             println!("       {} （{} 处）", c.name, n);
         }
         if dupes.len() > 8 {
-            println!("       …… 还有 {} 个，看 `path-guard dupes`", dupes.len() - 8);
+            println!(
+                "       …… 还有 {} 个，看 `path-guard dupes`",
+                dupes.len() - 8
+            );
         }
     }
 
@@ -332,12 +343,18 @@ fn cmd_doctor(as_json: bool) {
     if pins.is_empty() {
         println!("  ✅ 钉死版本     无");
     } else {
-        println!("  ⚠️  钉死版本     {} 条（工具升级后会集体失效）", pins.len());
+        println!(
+            "  ⚠️  钉死版本     {} 条（工具升级后会集体失效）",
+            pins.len()
+        );
         for h in pins.iter().take(4) {
             println!("       {}", short(&h.dir));
         }
         if pins.len() > 4 {
-            println!("       …… 还有 {} 条，看 `path-guard pinned`", pins.len() - 4);
+            println!(
+                "       …… 还有 {} 条，看 `path-guard pinned`",
+                pins.len() - 4
+            );
         }
     }
 

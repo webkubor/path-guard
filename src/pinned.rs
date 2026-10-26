@@ -85,7 +85,6 @@ fn suggest_stable_entry(dir: &Path) -> Option<String> {
     }
 }
 
-
 /// 找出**字面写死**了这条路径的配置文件。
 ///
 /// 为什么必须查这一步：PATH 是运行期的**求值结果**，光看结果分不清两种情况 ——
@@ -96,7 +95,9 @@ fn suggest_stable_entry(dir: &Path) -> Option<String> {
 ///
 /// 顺带一个收益：与其让用户自己去 grep，不如直接把文件列出来。
 fn find_references(dir: &Path) -> Vec<PathBuf> {
-    let Ok(home) = std::env::var("HOME") else { return Vec::new() };
+    let Ok(home) = std::env::var("HOME") else {
+        return Vec::new();
+    };
     let full = dir.to_string_lossy().to_string();
     // 配置里常写成 ~/ 或 $HOME/ 形式，三种都要认
     let rel = full.strip_prefix(&home).unwrap_or(&full).to_string();
@@ -106,11 +107,22 @@ fn find_references(dir: &Path) -> Vec<PathBuf> {
         vec![full.clone(), format!("~{rel}"), format!("$HOME{rel}")]
     };
 
-    let mut files: Vec<PathBuf> = ["/.zshrc", "/.zprofile", "/.zshenv", "/.bashrc", "/.bash_profile", "/.profile"]
-        .iter()
-        .map(|f| PathBuf::from(format!("{home}{f}")))
-        .collect();
-    for dir in [format!("{home}/.config/env"), format!("{home}/Library/LaunchAgents"), "/etc/paths.d".to_string()] {
+    let mut files: Vec<PathBuf> = [
+        "/.zshrc",
+        "/.zprofile",
+        "/.zshenv",
+        "/.bashrc",
+        "/.bash_profile",
+        "/.profile",
+    ]
+    .iter()
+    .map(|f| PathBuf::from(format!("{home}{f}")))
+    .collect();
+    for dir in [
+        format!("{home}/.config/env"),
+        format!("{home}/Library/LaunchAgents"),
+        "/etc/paths.d".to_string(),
+    ] {
         if let Ok(rd) = std::fs::read_dir(&dir) {
             files.extend(rd.flatten().map(|e| e.path()));
         }
@@ -187,7 +199,9 @@ mod tests {
     #[test]
     fn suggests_shims_for_mise() {
         let home = std::env::var("HOME").unwrap();
-        let d = PathBuf::from(format!("{home}/.local/share/mise/installs/node/24.15.0/bin"));
+        let d = PathBuf::from(format!(
+            "{home}/.local/share/mise/installs/node/24.15.0/bin"
+        ));
         let got = suggest_stable_entry(&d).unwrap();
         assert!(got.ends_with("/.local/share/mise/shims"), "got: {got}");
     }
@@ -198,11 +212,16 @@ mod tests {
         let dirs = vec![
             PathBuf::from("/usr/bin"),
             PathBuf::from(format!("{home}/.local/share/mise/shims")),
-            PathBuf::from(format!("{home}/.local/share/mise/installs/node/24.15.0/bin")),
+            PathBuf::from(format!(
+                "{home}/.local/share/mise/installs/node/24.15.0/bin"
+            )),
         ];
         // scan_pinned 现在还要求「配置里有字面引用」，测试环境里没有，
         // 所以这里只验证不会把 shims / /usr/bin 误判成版本目录
         let hits = scan_pinned(&dirs);
-        assert!(hits.iter().all(|h| h.segment == "24.15.0"), "只可能命中带版本号那条");
+        assert!(
+            hits.iter().all(|h| h.segment == "24.15.0"),
+            "只可能命中带版本号那条"
+        );
     }
 }

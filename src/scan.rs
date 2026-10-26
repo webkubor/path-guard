@@ -16,8 +16,6 @@ use std::path::{Path, PathBuf};
 /// PATH 上的一个可执行文件副本。
 #[derive(Debug, Clone)]
 pub struct Entry {
-    /// 命令名
-    pub name: String,
     /// 在 PATH 里的位置（0 起），决定谁先被命中
     pub path_index: usize,
     /// 该副本自身的路径（可能是软链）
@@ -146,7 +144,9 @@ pub fn scan() -> BTreeMap<String, Command> {
 
             // 可执行判断要看**目标**的权限，不是软链自己的
             let runnable = match &real {
-                Some(r) => fs::metadata(r).map(|m| m.is_file() && is_executable(&m)).unwrap_or(false),
+                Some(r) => fs::metadata(r)
+                    .map(|m| m.is_file() && is_executable(&m))
+                    .unwrap_or(false),
                 // 悬空软链留下来 —— 它正是我们要报告的故障之一
                 None => is_symlink,
             };
@@ -161,7 +161,6 @@ pub fn scan() -> BTreeMap<String, Command> {
                 })
                 .entries
                 .push(Entry {
-                    name,
                     path_index: idx,
                     link,
                     real,
@@ -190,14 +189,15 @@ pub fn scan_one(name: &str) -> Option<Command> {
         let is_symlink = lmd.file_type().is_symlink();
         let real = fs::canonicalize(&link).ok();
         let runnable = match &real {
-            Some(r) => fs::metadata(r).map(|m| m.is_file() && is_executable(&m)).unwrap_or(false),
+            Some(r) => fs::metadata(r)
+                .map(|m| m.is_file() && is_executable(&m))
+                .unwrap_or(false),
             None => is_symlink,
         };
         if !runnable {
             continue;
         }
         entries.push(Entry {
-            name: name.to_string(),
             path_index: idx,
             link,
             real,
@@ -214,7 +214,6 @@ pub fn scan_one(name: &str) -> Option<Command> {
         entries,
     })
 }
-
 
 /// 系统自带、动不了也不该动的路径 —— 报了也没法处理，属于永久噪音。
 ///
@@ -260,7 +259,6 @@ mod tests {
 
     fn entry(link: &str, real: Option<&str>) -> Entry {
         Entry {
-            name: "x".into(),
             path_index: 0,
             link: PathBuf::from(link),
             real: real.map(PathBuf::from),
@@ -313,8 +311,14 @@ mod tests {
         let cmd = Command {
             name: "node".into(),
             entries: vec![
-                entry("/opt/homebrew/bin/node", Some("/opt/homebrew/Cellar/node/23.9.0/bin/node")),
-                entry("/usr/local/bin/node", Some("/usr/local/n/versions/node/20/bin/node")),
+                entry(
+                    "/opt/homebrew/bin/node",
+                    Some("/opt/homebrew/Cellar/node/23.9.0/bin/node"),
+                ),
+                entry(
+                    "/usr/local/bin/node",
+                    Some("/usr/local/n/versions/node/20/bin/node"),
+                ),
             ],
         };
         assert!(cmd.has_distinct_copies());
