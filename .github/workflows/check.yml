@@ -1,0 +1,32 @@
+name: check
+
+# Rust 项目的三道门禁：格式、Clippy（-D warnings 当错误）、测试。
+#
+# 为什么必须有 CI：path-guard 的价值全在「结论可信」——它报出来的悬空软链、
+# 版本遮蔽是不是真的，只有每次改动都跑过这三条才知道。之前 fmt 与 clippy
+# 在本地就一直是红的（Entry 里那个没人读的 name 字段、整仓没被 rustfmt 过），
+# 红了没人拦，等于没有门禁。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: rustfmt
+        run: cargo fmt --check
+
+      - name: Clippy（警告即错误）
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 测试
+        run: cargo test
